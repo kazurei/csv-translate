@@ -1,15 +1,15 @@
 import streamlit as st
 import pandas as pd
 from deep_translator import GoogleTranslator
-from tqdm import tqdm
 import time
+import os
 
 st.set_page_config(page_title="CSV翻訳ツール", layout="wide")
 
 st.title("CSV content列 日本語翻訳ツール")
 
 uploaded_file = st.file_uploader(
-    "英語レビューCSVをアップロード",
+    "CSVをアップロード",
     type=["csv"]
 )
 
@@ -17,50 +17,76 @@ if uploaded_file is not None:
 
     df = pd.read_csv(uploaded_file)
 
-    st.write("読み込み完了")
-    st.write(df.head())
+    st.write(f"レビュー数: {len(df)}")
 
     if "content" not in df.columns:
-        st.error("content列が見つかりません")
-    else:
+        st.error("content列がありません")
+        st.stop()
 
-        if st.button("翻訳開始"):
+    if st.button("翻訳開始"):
 
-            progress = st.progress(0)
-            translated = []
+        # 保存用列
+        if "content_ja" not in df.columns:
+            df["content_ja"] = ""
 
-            contents = df["content"].fillna("").tolist()
+        progress = st.progress(0)
+        status = st.empty()
 
-            for i, text in enumerate(contents):
+        total = len(df)
 
-                try:
-                    ja = GoogleTranslator(
-                        source='en',
-                        target='ja'
-                    ).translate(text)
+        SAVE_EVERY = 100
 
-                except Exception:
-                    ja = text
+        for i in range(total):
 
-                translated.append(ja)
+            # 既に翻訳済みならスキップ
+            if pd.notna(df.loc[i, "content_ja"]) and df.loc[i, "content_ja"] != "":
+                continue
 
-                progress.progress((i + 1) / len(contents))
+            text = str(df.loc[i, "content"])
 
-                # API負荷軽減
-                time.sleep(0.1)
+            try:
+                ja = GoogleTranslator(
+                    source='en',
+                    target='ja'
+                ).translate(text)
 
-            df["content"] = translated
+            except Exception as e:
+                ja = text
+                st.warning(f"{i}行目でエラー")
 
-            csv = df.to_csv(
-                index=False,
-                encoding="utf-8-sig"
-            ).encode("utf-8-sig")
+            df.loc[i, "content_ja"] = ja
 
-            st.success("翻訳完了")
+            # 進捗表示
+            progress.progress((i + 1) / total)
+            status.text(f"{i+1}/{total} 件 翻訳中")
 
+            # 一定件数ごとに自動保存
+            if i % SAVE_EVERY == 0:
+
+                df.to_csv(
+                    "translated_backup.csv",
+                    index=False,
+                    encoding="utf-8-sig"
+                )
+
+            # 制限回避
+            time.sleep(0.2)
+
+        # 最終保存
+        output_file = "reviews_japanese.csv"
+
+        df.to_csv(
+            output_file,
+            index=False,
+            encoding="utf-8-sig"
+        )
+
+        with open(output_file, "rb") as f:
             st.download_button(
-                label="日本語CSVをダウンロード",
-                data=csv,
-                file_name="reviews_japanese.csv",
+                "日本語CSVをダウンロード",
+                f,
+                file_name=output_file,
                 mime="text/csv"
             )
+
+        st.success("完了")
