@@ -4,45 +4,50 @@ from deep_translator import GoogleTranslator
 import time
 import os
 
-st.set_page_config(page_title="CSV翻訳ツール", layout="wide")
+st.title("レビュー翻訳ツール")
 
-st.title("CSV content列 日本語翻訳ツール")
+SAVE_FILE = "translated_reviews.csv"
 
 uploaded_file = st.file_uploader(
-    "CSVをアップロード",
+    "CSVアップロード",
     type=["csv"]
 )
 
-if uploaded_file is not None:
+if uploaded_file:
 
-    df = pd.read_csv(uploaded_file)
+    # 既存保存ファイルがあれば再開
+    if os.path.exists(SAVE_FILE):
+        df = pd.read_csv(SAVE_FILE)
+        st.success("途中データを読み込みました")
+    else:
+        df = pd.read_csv(uploaded_file)
 
-    st.write(f"レビュー数: {len(df)}")
-
-    if "content" not in df.columns:
-        st.error("content列がありません")
-        st.stop()
-
-    if st.button("翻訳開始"):
-
-        # 保存用列
         if "content_ja" not in df.columns:
             df["content_ja"] = ""
 
+    st.write(df.head())
+
+    untranslated = df["content_ja"].fillna("") == ""
+    remaining = untranslated.sum()
+
+    st.write(f"残り {remaining} 件")
+
+    BATCH_SIZE = st.slider(
+        "1回で翻訳する件数",
+        10,
+        200,
+        50
+    )
+
+    if st.button("翻訳実行"):
+
+        targets = df[untranslated].head(BATCH_SIZE).index
+
         progress = st.progress(0)
-        status = st.empty()
 
-        total = len(df)
+        for count, idx in enumerate(targets):
 
-        SAVE_EVERY = 100
-
-        for i in range(total):
-
-            # 既に翻訳済みならスキップ
-            if pd.notna(df.loc[i, "content_ja"]) and df.loc[i, "content_ja"] != "":
-                continue
-
-            text = str(df.loc[i, "content"])
+            text = str(df.loc[idx, "content"])
 
             try:
                 ja = GoogleTranslator(
@@ -50,43 +55,33 @@ if uploaded_file is not None:
                     target='ja'
                 ).translate(text)
 
-            except Exception as e:
+            except Exception:
                 ja = text
-                st.warning(f"{i}行目でエラー")
 
-            df.loc[i, "content_ja"] = ja
+            df.loc[idx, "content_ja"] = ja
 
-            # 進捗表示
-            progress.progress((i + 1) / total)
-            status.text(f"{i+1}/{total} 件 翻訳中")
-
-            # 一定件数ごとに自動保存
-            if i % SAVE_EVERY == 0:
-
-                df.to_csv(
-                    "translated_backup.csv",
-                    index=False,
-                    encoding="utf-8-sig"
-                )
+            progress.progress((count + 1) / len(targets))
 
             # 制限回避
-            time.sleep(0.2)
+            time.sleep(0.3)
 
-        # 最終保存
-        output_file = "reviews_japanese.csv"
-
+        # 毎回保存
         df.to_csv(
-            output_file,
+            SAVE_FILE,
             index=False,
             encoding="utf-8-sig"
         )
 
-        with open(output_file, "rb") as f:
+        st.success("保存完了")
+
+    # ダウンロード
+    if os.path.exists(SAVE_FILE):
+
+        with open(SAVE_FILE, "rb") as f:
+
             st.download_button(
-                "日本語CSVをダウンロード",
-                f,
-                file_name=output_file,
+                "CSVダウンロード",
+                data=f,
+                file_name="reviews_japanese.csv",
                 mime="text/csv"
             )
-
-        st.success("完了")
