@@ -4,23 +4,23 @@ from deep_translator import GoogleTranslator
 import time
 import os
 
-st.title("レビュー翻訳ツール")
+st.title("Excel翻訳ツール")
 
-SAVE_FILE = "translated_reviews.csv"
+SAVE_FILE = "translated_reviews.xlsx"
 
 uploaded_file = st.file_uploader(
-    "CSVアップロード",
-    type=["csv"]
+    "Excelファイルをアップロード",
+    type=["xlsx"]
 )
 
 if uploaded_file:
 
-    # 既存保存ファイルがあれば再開
+    # 再開用
     if os.path.exists(SAVE_FILE):
-        df = pd.read_csv(SAVE_FILE)
+        df = pd.read_excel(SAVE_FILE)
         st.success("途中データを読み込みました")
     else:
-        df = pd.read_csv(uploaded_file)
+        df = pd.read_excel(uploaded_file)
 
         if "content_ja" not in df.columns:
             df["content_ja"] = ""
@@ -33,13 +33,13 @@ if uploaded_file:
     st.write(f"残り {remaining} 件")
 
     BATCH_SIZE = st.slider(
-        "1回で翻訳する件数",
+        "1回の翻訳件数",
         10,
         200,
         50
     )
 
-    if st.button("翻訳実行"):
+    if st.button("翻訳開始"):
 
         targets = df[untranslated].head(BATCH_SIZE).index
 
@@ -62,14 +62,12 @@ if uploaded_file:
 
             progress.progress((count + 1) / len(targets))
 
-            # 制限回避
             time.sleep(0.3)
 
-        # 毎回保存
-        df.to_csv(
+        # Excel保存
+        df.to_excel(
             SAVE_FILE,
-            index=False,
-            encoding="utf-8-sig"
+            index=False
         )
 
         st.success("保存完了")
@@ -80,8 +78,8 @@ if uploaded_file:
         with open(SAVE_FILE, "rb") as f:
 
             st.download_button(
-                "CSVダウンロード",
+                "翻訳済みExcelをダウンロード",
                 data=f,
-                file_name="reviews_japanese.csv",
-                mime="text/csv"
+                file_name="reviews_japanese.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
